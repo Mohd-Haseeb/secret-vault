@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "todo-mobile",
-    "slug": "todo-mobile",
+    "name": "Secret Vault",
+    "slug": "secret-vault-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -13,7 +13,11 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.mohdhaseeb.secretvault",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -25,6 +29,15 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-secure-store"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "590feece-5f91-431d-bb7a-077d5f1131cb"
+      }
+    },
+    "owner": "mohdhaseeb"
   }
 }
