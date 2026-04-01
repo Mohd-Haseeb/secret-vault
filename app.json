@@ -16,7 +16,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.mohdhaseeb.secretvault",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSFaceIDUsageDescription": "Use Face ID to unlock Secret Vault and reveal protected secrets."
       }
     },
     "android": {
@@ -31,7 +32,8 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-local-authentication"
     ],
     "extra": {
       "eas": {

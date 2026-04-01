@@ -2,7 +2,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, View } from 'react-native';
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import VaultLockOverlay from './src/components/VaultLockOverlay';
 import UndoBanner from './src/components/UndoBanner';
 import SecretDetailScreen from './src/screens/SecretDetailScreen';
@@ -26,44 +26,46 @@ export default function App() {
     <SafeAreaProvider>
       <VaultProvider>
         <NavigationContainer>
-          <SafeAreaView style={styles.container}>
-            <StatusBar style="light" />
-            <View style={styles.container}>
-              <Stack.Navigator
-                screenOptions={{
-                  headerStyle: { backgroundColor: '#0d1b2f' },
-                  headerTintColor: '#f7fbff',
-                  headerShadowVisible: false,
-                  contentStyle: { backgroundColor: '#06111f' },
-                }}
-              >
-                <Stack.Screen
-                  name="VaultList"
-                  component={VaultListScreen}
-                  options={{ title: 'Secret Vault' }}
-                />
-                <Stack.Screen
-                  name="SecretDetail"
-                  component={SecretDetailScreen}
-                  options={{ title: 'Secret Detail' }}
-                />
-                <Stack.Screen
-                  name="SecretEditor"
-                  component={SecretEditorScreen}
-                  options={({ route }) => ({
-                    title: route.params?.draft ? 'Edit Secret' : 'New Secret',
-                  })}
-                />
-                <Stack.Screen
-                  name="Settings"
-                  component={SettingsScreen}
-                  options={{ title: 'Settings' }}
-                />
-              </Stack.Navigator>
-              <VaultLockOverlay />
-              <UndoBanner />
-            </View>
-          </SafeAreaView>
+          <StatusBar
+            style="light"
+            backgroundColor="#0d1b2f"
+            translucent={false}
+          />
+          <View style={styles.container}>
+            <Stack.Navigator
+              screenOptions={{
+                headerStyle: { backgroundColor: '#0d1b2f' },
+                headerTintColor: '#f7fbff',
+                headerShadowVisible: false,
+                contentStyle: { backgroundColor: '#06111f' },
+              }}
+            >
+              <Stack.Screen
+                name="VaultList"
+                component={VaultListScreen}
+                options={{ title: 'Secret Vault' }}
+              />
+              <Stack.Screen
+                name="SecretDetail"
+                component={SecretDetailScreen}
+                options={{ title: 'Secret Detail' }}
+              />
+              <Stack.Screen
+                name="SecretEditor"
+                component={SecretEditorScreen}
+                options={({ route }) => ({
+                  title: route.params?.draft ? 'Edit Secret' : 'New Secret',
+                })}
+              />
+              <Stack.Screen
+                name="Settings"
+                component={SettingsScreen}
+                options={{ title: 'Settings' }}
+              />
+            </Stack.Navigator>
+            <VaultLockOverlay />
+            <UndoBanner />
+          </View>
         </NavigationContainer>
       </VaultProvider>
     </SafeAreaProvider>

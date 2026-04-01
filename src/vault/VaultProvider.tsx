@@ -1,4 +1,5 @@
 import * as Clipboard from 'expo-clipboard';
+import * as LocalAuthentication from 'expo-local-authentication';
 import * as ScreenCapture from 'expo-screen-capture';
 import React, {
   createContext,
@@ -16,12 +17,9 @@ import {
 } from '../storage/settingsStorage';
 import {
   deleteSecretEntry,
-  initializeVaultAccess,
-  isDeviceAuthenticationAvailableInCurrentBuild,
   loadProtectedSecretValue,
   loadSecretSummaries,
   saveSecretEntry,
-  unlockVaultSession,
 } from '../storage/vaultStorage';
 import { SecretDraft, SecretSummary, VaultSettings } from '../types';
 
@@ -99,6 +97,8 @@ export const VaultProvider: React.FC<React.PropsWithChildren> = ({
   const [sessionLocked, setSessionLocked] = useState(false);
   const [lockVersion, setLockVersion] = useState(0);
   const [settings, setSettings] = useState<VaultSettings>(defaultVaultSettings);
+  const [supportsRuntimeDeviceAuth, setSupportsRuntimeDeviceAuth] =
+    useState(false);
   const [deviceSecurityWarning, setDeviceSecurityWarning] = useState<
     string | null
   >(null);
@@ -108,23 +108,28 @@ export const VaultProvider: React.FC<React.PropsWithChildren> = ({
   const backgroundLockTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
-  const supportsRuntimeDeviceAuth = isDeviceAuthenticationAvailableInCurrentBuild();
 
   useEffect(() => {
     (async () => {
-      await initializeVaultAccess();
-      const storedSettings = await loadVaultSettings();
-      const storedEntries = await loadSecretSummaries();
+      const [storedSettings, storedEntries, hasAuthHardware, enrolledLevel] =
+        await Promise.all([
+          loadVaultSettings(),
+          loadSecretSummaries(),
+          LocalAuthentication.hasHardwareAsync().catch(() => false),
+          LocalAuthentication.getEnrolledLevelAsync().catch(
+            () => LocalAuthentication.SecurityLevel.NONE,
+          ),
+        ]);
+
       setSettings(storedSettings);
       setEntries(storedEntries);
-      if (!supportsRuntimeDeviceAuth) {
-        setDeviceSecurityWarning(
-          'Expo Go cannot test device-authenticated secret access on iPhone. Values are still stored locally, but OS auth prompts require a development or production build.',
-        );
-      }
+      setSupportsRuntimeDeviceAuth(
+        hasAuthHardware &&
+          enrolledLevel !== LocalAuthentication.SecurityLevel.NONE,
+      );
       setIsLoading(false);
     })();
-  }, [supportsRuntimeDeviceAuth]);
+  }, []);
 
   useEffect(() => {
     const timeoutBySetting: Record<VaultSettings['lockTimeout'], number> = {
@@ -211,6 +216,71 @@ export const VaultProvider: React.FC<React.PropsWithChildren> = ({
     clipboardOwnedValueRef.current = null;
   };
 
+  const getClipboardTimeoutMs = () => {
+    switch (settings.clipboardTimeout) {
+      case '15s':
+        return 15_000;
+      case '90s':
+        return 90_000;
+      case '45s':
+      default:
+        return 45_000;
+    }
+  };
+
+  const getClipboardTimeoutLabel = () => {
+    switch (settings.clipboardTimeout) {
+      case '15s':
+        return '15 seconds';
+      case '90s':
+        return '90 seconds';
+      case '45s':
+      default:
+        return '45 seconds';
+    }
+  };
+
+  const authenticateForAccess = async (promptMessage: string) => {
+    if (!supportsRuntimeDeviceAuth) {
+      setDeviceSecurityWarning(
+        'Device authentication is not available on this device. Set up a screen lock or biometrics to use this protection.',
+      );
+      return false;
+    }
+
+    try {
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage,
+        cancelLabel: 'Cancel',
+        disableDeviceFallback: false,
+      });
+
+      if (result.success) {
+        setDeviceSecurityWarning(null);
+        return true;
+      }
+
+      if (
+        result.error === 'user_cancel' ||
+        result.error === 'app_cancel' ||
+        result.error === 'system_cancel'
+      ) {
+        return false;
+      }
+
+      setDeviceSecurityWarning(
+        'Authentication failed. Check your screen lock or biometric setup and try again.',
+      );
+      return false;
+    } catch (error) {
+      console.warn('Failed to run local authentication', error);
+      setDeviceSecurityWarning(
+        'Authentication failed. Check your screen lock or biometric setup and try again.',
+      );
+      return false;
+    }
+  };
+
   const scheduleClipboardClear = (secretValue: string) => {
     if (clipboardTimeoutRef.current) {
       clearTimeout(clipboardTimeoutRef.current);
@@ -219,16 +289,15 @@ export const VaultProvider: React.FC<React.PropsWithChildren> = ({
     clipboardOwnedValueRef.current = secretValue;
     clipboardTimeoutRef.current = setTimeout(() => {
       void clearClipboardIfOwned();
-    }, settings.clipboardTimeout === '15s' ? 15_000 : settings.clipboardTimeout === '90s' ? 90_000 : 45_000);
+    }, getClipboardTimeoutMs());
   };
 
   const revealSecret = async (id: string) => {
-    if (settings.requireAuthOnReveal && supportsRuntimeDeviceAuth) {
-      const didUnlock = await unlockVaultSession();
-      if (!didUnlock) {
-        setDeviceSecurityWarning(
-          'Device authentication failed or is unavailable. Make sure a phone passcode or biometric unlock is configured.',
-        );
+    if (settings.requireAuthOnReveal) {
+      const didAuthenticate = await authenticateForAccess(
+        'Authenticate to reveal this secret',
+      );
+      if (!didAuthenticate) {
         return null;
       }
     }
@@ -237,7 +306,7 @@ export const VaultProvider: React.FC<React.PropsWithChildren> = ({
 
     if (!value) {
       setDeviceSecurityWarning(
-        'Device authentication failed or is unavailable. Make sure a phone passcode or biometric unlock is configured.',
+        'This secret could not be loaded from secure storage.',
       );
       return null;
     }
@@ -268,7 +337,7 @@ export const VaultProvider: React.FC<React.PropsWithChildren> = ({
 
     scheduleClipboardClear(value);
     setDeviceSecurityWarning(
-      'Secret copied. The clipboard will be cleared in 45 seconds if it still contains the same value.',
+      `Secret copied. The clipboard will be cleared in ${getClipboardTimeoutLabel()} if it still contains the same value.`,
     );
     return true;
   };
@@ -433,16 +502,13 @@ export const VaultProvider: React.FC<React.PropsWithChildren> = ({
     if (!supportsRuntimeDeviceAuth) {
       setSessionLocked(false);
       setDeviceSecurityWarning(
-        'Expo Go bypassed the lock screen because SecureStore authentication prompts are not supported there. Test a dev build for the real device-auth flow.',
+        'Device authentication is not available on this device, so the vault lock is acting only as a privacy screen.',
       );
       return;
     }
 
-    const didUnlock = await unlockVaultSession();
+    const didUnlock = await authenticateForAccess('Unlock Secret Vault');
     if (!didUnlock) {
-      setDeviceSecurityWarning(
-        'Unable to unlock the vault with device security. Check your phone passcode or biometric settings.',
-      );
       return;
     }
 

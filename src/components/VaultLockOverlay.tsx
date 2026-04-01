@@ -21,7 +21,7 @@ const VaultLockOverlay: React.FC = () => {
             ? 'Loading secure storage on this device.'
             : supportsRuntimeDeviceAuth
               ? 'The app was locked after leaving the foreground. Unlock with the phone security prompt.'
-              : 'Expo Go cannot show the native device-auth prompt here. Unlock will only dismiss the test overlay.'}
+              : 'This device does not have app authentication available right now. Unlock will only dismiss the privacy screen.'}
         </Text>
         {!isLoading ? (
           <Pressable style={styles.unlockButton} onPress={unlockVault}>

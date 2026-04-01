@@ -1,11 +1,8 @@
 import * as SecureStore from 'expo-secure-store';
-import Constants from 'expo-constants';
 import { SecretSummary } from '../types';
 
 const INDEX_KEY = 'local-secret-vault.index';
-const ACCESS_KEY = 'local-secret-vault.access';
 const KEYCHAIN_SERVICE = 'local-secret-vault';
-const isExpoGo = Constants.expoGoConfig != null;
 
 type PersistedSecret = SecretSummary & {
   secret: string;
@@ -77,43 +74,6 @@ async function saveIndex(entries: SecretSummary[]): Promise<void> {
   });
 }
 
-export async function initializeVaultAccess(): Promise<void> {
-  try {
-    const existing = await SecureStore.getItemAsync(ACCESS_KEY, {
-      keychainService: KEYCHAIN_SERVICE,
-    });
-
-    if (existing) {
-      return;
-    }
-
-    await SecureStore.setItemAsync(ACCESS_KEY, 'vault-access', {
-      keychainService: KEYCHAIN_SERVICE,
-      requireAuthentication: !isExpoGo,
-    });
-  } catch (error) {
-    console.warn('Failed to initialize protected access key', error);
-  }
-}
-
-export async function unlockVaultSession(): Promise<boolean> {
-  if (isExpoGo) {
-    return true;
-  }
-
-  try {
-    const token = await SecureStore.getItemAsync(ACCESS_KEY, {
-      keychainService: KEYCHAIN_SERVICE,
-      requireAuthentication: true,
-    });
-
-    return token === 'vault-access';
-  } catch (error) {
-    console.warn('Failed to unlock vault session', error);
-    return false;
-  }
-}
-
 export async function loadSecretSummaries(): Promise<SecretSummary[]> {
   const entries = await loadIndex();
   return entries.sort((left, right) =>
@@ -161,8 +121,4 @@ export async function loadProtectedSecretValue(
     console.warn('Failed to load protected secret value', error);
     return null;
   }
-}
-
-export function isDeviceAuthenticationAvailableInCurrentBuild(): boolean {
-  return !isExpoGo;
 }

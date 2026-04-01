@@ -44,7 +44,8 @@ const SettingsScreen: React.FC<Props> = () => {
               <Text style={styles.rowTitle}>Require auth on every reveal</Text>
               <Text style={styles.rowSubtitle}>
                 Prompts for device security before reveal, copy, edit, pin, and
-                delete. In Expo Go this cannot be fully tested.
+                delete. This is available when the device has a screen lock or
+                biometric method configured.
               </Text>
             </View>
             <Switch
@@ -61,7 +62,6 @@ const SettingsScreen: React.FC<Props> = () => {
               <Text style={styles.rowTitle}>Block screenshots</Text>
               <Text style={styles.rowSubtitle}>
                 Prevents screenshots and screen recordings in supported builds.
-                Expo Go may not reflect production behavior here.
               </Text>
             </View>
             <Switch

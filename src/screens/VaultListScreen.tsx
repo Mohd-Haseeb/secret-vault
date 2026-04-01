@@ -97,8 +97,6 @@ const VaultListScreen: React.FC<Props> = ({ navigation }) => {
         contentContainerStyle={styles.scrollContent}
       >
         <View style={styles.hero}>
-          <Text style={styles.eyebrow}>LOCAL ONLY</Text>
-          <Text style={styles.title}>Secret Vault</Text>
           <Text style={styles.subtitle}>
             Browse your secrets, pin the important ones, and keep the editor out
             of the way until you need it.
@@ -350,19 +348,6 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     padding: 22,
     marginBottom: 18,
-  },
-  eyebrow: {
-    color: '#d5ff5f',
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-    marginBottom: 14,
-  },
-  title: {
-    color: '#f7fbff',
-    fontSize: 32,
-    fontWeight: '800',
-    marginBottom: 8,
   },
   subtitle: {
     color: '#adc1db',
