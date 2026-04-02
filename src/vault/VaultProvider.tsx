@@ -84,6 +84,10 @@ function createSecretEntry(draft: SecretDraft, pinned = false) {
   };
 }
 
+function normalizeLabelForComparison(label: string) {
+  return label.trim().toLocaleLowerCase();
+}
+
 export const emptySecretDraft = initialDraft;
 
 export const VaultProvider: React.FC<React.PropsWithChildren> = ({
@@ -345,6 +349,18 @@ export const VaultProvider: React.FC<React.PropsWithChildren> = ({
   const saveDraft = async (draft: SecretDraft) => {
     if (!draft.label.trim() || !draft.secret.trim()) {
       setDeviceSecurityWarning('Label and secret value are required.');
+      return false;
+    }
+
+    const normalizedDraftLabel = normalizeLabelForComparison(draft.label);
+    const hasDuplicateLabel = entries.some(
+      (entry) =>
+        entry.id !== draft.id &&
+        normalizeLabelForComparison(entry.label) === normalizedDraftLabel,
+    );
+
+    if (hasDuplicateLabel) {
+      setDeviceSecurityWarning('A secret with this name already exists.');
       return false;
     }
 
