@@ -38,7 +38,7 @@ function sortEntries(entries: SecretSummary[], sortMode: SortMode) {
 }
 
 const VaultListScreen: React.FC<Props> = ({ navigation }) => {
-  const { entries, deviceSecurityWarning, clearWarning } = useVault();
+  const { entries, statusMessage, clearStatusMessage } = useVault();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [activeCollection, setActiveCollection] = useState<string | null>(null);
@@ -245,9 +245,26 @@ const VaultListScreen: React.FC<Props> = ({ navigation }) => {
           ) : null}
         </View>
 
-        {deviceSecurityWarning ? (
-          <Pressable style={styles.warningCard} onPress={clearWarning}>
-            <Text style={styles.warningText}>{deviceSecurityWarning}</Text>
+        {statusMessage ? (
+          <Pressable
+            style={[
+              styles.noticeCard,
+              statusMessage.tone === 'error' && styles.noticeCardError,
+              statusMessage.tone === 'success' && styles.noticeCardSuccess,
+              statusMessage.tone === 'info' && styles.noticeCardInfo,
+            ]}
+            onPress={clearStatusMessage}
+          >
+            <Text
+              style={[
+                styles.noticeText,
+                statusMessage.tone === 'error' && styles.noticeTextError,
+                statusMessage.tone === 'success' && styles.noticeTextSuccess,
+                statusMessage.tone === 'info' && styles.noticeTextInfo,
+              ]}
+            >
+              {statusMessage.text}
+            </Text>
           </Pressable>
         ) : null}
 
@@ -475,16 +492,34 @@ const styles = StyleSheet.create({
   collectionChipTextActive: {
     color: '#152335',
   },
-  warningCard: {
+  noticeCard: {
     backgroundColor: '#f7ead2',
     borderRadius: 18,
     padding: 14,
     marginBottom: 16,
   },
-  warningText: {
+  noticeCardError: {
+    backgroundColor: '#f7ead2',
+  },
+  noticeCardSuccess: {
+    backgroundColor: '#ddf5d7',
+  },
+  noticeCardInfo: {
+    backgroundColor: '#d9e8fb',
+  },
+  noticeText: {
     color: '#724200',
     fontSize: 13,
     lineHeight: 18,
+  },
+  noticeTextError: {
+    color: '#724200',
+  },
+  noticeTextSuccess: {
+    color: '#23581e',
+  },
+  noticeTextInfo: {
+    color: '#1f4b78',
   },
   emptyState: {
     backgroundColor: '#101826',

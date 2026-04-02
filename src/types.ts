@@ -31,3 +31,10 @@ export type VaultSettings = {
   requireAuthOnReveal: boolean;
   blockScreenshots: boolean;
 };
+
+export type StatusTone = 'error' | 'success' | 'info';
+
+export type StatusMessage = {
+  tone: StatusTone;
+  text: string;
+};

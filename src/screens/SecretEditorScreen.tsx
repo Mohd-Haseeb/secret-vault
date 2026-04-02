@@ -1,5 +1,5 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Keyboard,
   Pressable,
@@ -12,16 +12,45 @@ import {
 import { RootStackParamList } from '../../App';
 import { SecretDraft } from '../types';
 import { emptySecretDraft, useVault } from '../vault/VaultProvider';
+import { normalizeLabelForComparison } from '../vault/vaultHelpers';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'SecretEditor'>;
 
 const SecretEditorScreen: React.FC<Props> = ({ navigation, route }) => {
-  const { saveDraft, deviceSecurityWarning, clearWarning } = useVault();
+  const { entries, saveDraft, statusMessage, clearStatusMessage } = useVault();
   const [draft, setDraft] = useState<SecretDraft>(route.params?.draft ?? emptySecretDraft);
+  const [hasAttemptedSave, setHasAttemptedSave] = useState(false);
 
   useEffect(() => {
     setDraft(route.params?.draft ?? emptySecretDraft);
+    setHasAttemptedSave(false);
   }, [route.params?.draft]);
+
+  const normalizedLabel = normalizeLabelForComparison(draft.label);
+  const duplicateLabelExists = useMemo(
+    () =>
+      normalizedLabel.length > 0 &&
+      entries.some(
+        (entry) =>
+          entry.id !== draft.id &&
+          normalizeLabelForComparison(entry.label) === normalizedLabel,
+      ),
+    [draft.id, entries, normalizedLabel],
+  );
+
+  const labelError = hasAttemptedSave
+    ? !draft.label.trim()
+      ? 'Label is required.'
+      : duplicateLabelExists
+        ? 'A secret with this name already exists.'
+        : null
+    : null;
+
+  const secretError = hasAttemptedSave
+    ? !draft.secret.trim()
+      ? 'Secret value is required.'
+      : null
+    : null;
 
   const updateDraft = (field: keyof SecretDraft, value: string) => {
     setDraft((current) => ({
@@ -31,6 +60,11 @@ const SecretEditorScreen: React.FC<Props> = ({ navigation, route }) => {
   };
 
   const handleSave = async () => {
+    setHasAttemptedSave(true);
+    if (!draft.label.trim() || !draft.secret.trim() || duplicateLabelExists) {
+      return;
+    }
+
     const didSave = await saveDraft(draft);
     if (!didSave) {
       return;
@@ -52,16 +86,17 @@ const SecretEditorScreen: React.FC<Props> = ({ navigation, route }) => {
           </Text>
 
           <TextInput
-            style={styles.input}
+            style={[styles.input, labelError && styles.inputError]}
             placeholder="Label"
             placeholderTextColor="#7a869b"
             value={draft.label}
             onChangeText={(value) => updateDraft('label', value)}
             returnKeyType="next"
           />
+          {labelError ? <Text style={styles.fieldError}>{labelError}</Text> : null}
 
           <TextInput
-            style={styles.input}
+            style={[styles.input, secretError && styles.inputError]}
             placeholder="Secret value"
             placeholderTextColor="#7a869b"
             value={draft.secret}
@@ -70,6 +105,7 @@ const SecretEditorScreen: React.FC<Props> = ({ navigation, route }) => {
             autoCapitalize="none"
             autoCorrect={false}
           />
+          {secretError ? <Text style={styles.fieldError}>{secretError}</Text> : null}
 
           <TextInput
             style={[styles.input, styles.notesInput]}
@@ -109,9 +145,26 @@ const SecretEditorScreen: React.FC<Props> = ({ navigation, route }) => {
             </Pressable>
           </View>
 
-          {deviceSecurityWarning ? (
-            <Pressable style={styles.warningCard} onPress={clearWarning}>
-              <Text style={styles.warningText}>{deviceSecurityWarning}</Text>
+          {statusMessage ? (
+            <Pressable
+              style={[
+                styles.noticeCard,
+                statusMessage.tone === 'error' && styles.noticeCardError,
+                statusMessage.tone === 'success' && styles.noticeCardSuccess,
+                statusMessage.tone === 'info' && styles.noticeCardInfo,
+              ]}
+              onPress={clearStatusMessage}
+            >
+              <Text
+                style={[
+                  styles.noticeText,
+                  statusMessage.tone === 'error' && styles.noticeTextError,
+                  statusMessage.tone === 'success' && styles.noticeTextSuccess,
+                  statusMessage.tone === 'info' && styles.noticeTextInfo,
+                ]}
+              >
+                {statusMessage.text}
+              </Text>
             </Pressable>
           ) : null}
         </View>
@@ -155,6 +208,17 @@ const styles = StyleSheet.create({
     color: '#182230',
     marginBottom: 12,
   },
+  inputError: {
+    borderColor: '#cf5b6d',
+    marginBottom: 6,
+  },
+  fieldError: {
+    color: '#9f3248',
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 12,
+    marginLeft: 4,
+  },
   notesInput: {
     minHeight: 82,
     textAlignVertical: 'top',
@@ -188,15 +252,33 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
-  warningCard: {
+  noticeCard: {
     backgroundColor: '#f7ead2',
     borderRadius: 18,
     padding: 14,
     marginTop: 14,
   },
-  warningText: {
+  noticeCardError: {
+    backgroundColor: '#f7ead2',
+  },
+  noticeCardSuccess: {
+    backgroundColor: '#ddf5d7',
+  },
+  noticeCardInfo: {
+    backgroundColor: '#d9e8fb',
+  },
+  noticeText: {
     color: '#724200',
     fontSize: 13,
     lineHeight: 18,
+  },
+  noticeTextError: {
+    color: '#724200',
+  },
+  noticeTextSuccess: {
+    color: '#23581e',
+  },
+  noticeTextInfo: {
+    color: '#1f4b78',
   },
 });

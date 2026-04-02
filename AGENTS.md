@@ -92,7 +92,7 @@ This repository is a local-only secret manager mobile app built with Expo, React
 
 ```bash
 source ~/.nvm/nvm.sh
-nvm use 20.20.0
+nvm use
 npx tsc --noEmit
 npm start
 ```

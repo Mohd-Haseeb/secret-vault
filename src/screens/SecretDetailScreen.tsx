@@ -17,8 +17,8 @@ const SecretDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   const {
     entries,
     lockVersion,
-    deviceSecurityWarning,
-    clearWarning,
+    statusMessage,
+    clearStatusMessage,
     revealSecret,
     copySecret,
     loadDraftForEditing,
@@ -159,9 +159,26 @@ const SecretDetailScreen: React.FC<Props> = ({ navigation, route }) => {
             </Pressable>
           </View>
 
-          {deviceSecurityWarning ? (
-            <Pressable style={styles.infoCard} onPress={clearWarning}>
-              <Text style={styles.infoText}>{deviceSecurityWarning}</Text>
+          {statusMessage ? (
+            <Pressable
+              style={[
+                styles.noticeCard,
+                statusMessage.tone === 'error' && styles.noticeCardError,
+                statusMessage.tone === 'success' && styles.noticeCardSuccess,
+                statusMessage.tone === 'info' && styles.noticeCardInfo,
+              ]}
+              onPress={clearStatusMessage}
+            >
+              <Text
+                style={[
+                  styles.noticeText,
+                  statusMessage.tone === 'error' && styles.noticeTextError,
+                  statusMessage.tone === 'success' && styles.noticeTextSuccess,
+                  statusMessage.tone === 'info' && styles.noticeTextInfo,
+                ]}
+              >
+                {statusMessage.text}
+              </Text>
             </Pressable>
           ) : null}
 
@@ -296,16 +313,34 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 18,
   },
-  infoCard: {
+  noticeCard: {
     backgroundColor: '#f7ead2',
     borderRadius: 18,
     padding: 14,
     marginBottom: 12,
   },
-  infoText: {
+  noticeCardError: {
+    backgroundColor: '#f7ead2',
+  },
+  noticeCardSuccess: {
+    backgroundColor: '#ddf5d7',
+  },
+  noticeCardInfo: {
+    backgroundColor: '#d9e8fb',
+  },
+  noticeText: {
     color: '#724200',
     fontSize: 13,
     lineHeight: 18,
+  },
+  noticeTextError: {
+    color: '#724200',
+  },
+  noticeTextSuccess: {
+    color: '#23581e',
+  },
+  noticeTextInfo: {
+    color: '#1f4b78',
   },
   primaryActions: {
     flexDirection: 'row',

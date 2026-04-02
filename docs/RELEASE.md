@@ -10,7 +10,7 @@ The app is production-shaped, but some security-sensitive behaviors still need v
 
 ```bash
 source ~/.nvm/nvm.sh
-nvm use 20.20.0
+nvm use
 npx tsc --noEmit
 ```
 
@@ -30,6 +30,9 @@ npx tsc --noEmit
 - lock timeout
 - auth-on-reveal toggle
 - screenshot blocking toggle
+- fully close and reopen the app
+- restart the Android device and reopen the app
+- verify previously saved secrets still load after reboot
 
 ## Expo Go warning
 
@@ -52,7 +55,7 @@ If Apple Developer access becomes available:
 
 ```bash
 source ~/.nvm/nvm.sh
-nvm use 20.20.0
+nvm use
 npx eas-cli login
 npx eas-cli project:init
 npx eas-cli build -p ios --profile preview
@@ -61,6 +64,15 @@ npx eas-cli build -p ios --profile preview
 ## Android suggestion
 
 If iOS signing is blocked by Apple Developer membership, Android should be the first real build target for production-style validation.
+
+## Android reboot and persistence check
+
+For the Android installed build, explicitly verify:
+
+- saved secrets still appear after a full device restart
+- secret values can still be revealed after restart
+- settings persist across restart
+- auth-on-reveal still prompts through the device's configured unlock method
 
 ## Release checklist
 
