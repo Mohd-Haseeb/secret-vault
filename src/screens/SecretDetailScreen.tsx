@@ -1,7 +1,6 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import React, { useEffect, useState } from 'react';
 import {
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,8 +16,8 @@ const SecretDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   const {
     entries,
     lockVersion,
-    deviceSecurityWarning,
-    clearWarning,
+    statusMessage,
+    clearStatusMessage,
     revealSecret,
     copySecret,
     loadDraftForEditing,
@@ -27,11 +26,13 @@ const SecretDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   } = useVault();
   const [revealedSecret, setRevealedSecret] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
+  const [isDeleteConfirmVisible, setIsDeleteConfirmVisible] = useState(false);
 
   const entry = entries.find((item) => item.id === route.params.secretID);
 
   useEffect(() => {
     setRevealedSecret(null);
+    setIsDeleteConfirmVisible(false);
   }, [lockVersion, entry?.updatedAt]);
 
   useEffect(() => {
@@ -74,25 +75,17 @@ const SecretDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   };
 
   const handleDelete = async () => {
-    Alert.alert(
-      'Delete secret?',
-      'The secret will be removed from the vault. You can undo this for a few seconds after deletion.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            setIsBusy(true);
-            const didDelete = await deleteSecret(entry.id);
-            setIsBusy(false);
-            if (didDelete) {
-              navigation.goBack();
-            }
-          },
-        },
-      ],
-    );
+    setIsDeleteConfirmVisible(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    setIsBusy(true);
+    const didDelete = await deleteSecret(entry.id);
+    setIsBusy(false);
+    setIsDeleteConfirmVisible(false);
+    if (didDelete) {
+      navigation.goBack();
+    }
   };
 
   const handlePinnedToggle = async () => {
@@ -159,17 +152,60 @@ const SecretDetailScreen: React.FC<Props> = ({ navigation, route }) => {
             </Pressable>
           </View>
 
-          {deviceSecurityWarning ? (
-            <Pressable style={styles.infoCard} onPress={clearWarning}>
-              <Text style={styles.infoText}>{deviceSecurityWarning}</Text>
+          {statusMessage ? (
+            <Pressable
+              style={[
+                styles.noticeCard,
+                statusMessage.tone === 'error' && styles.noticeCardError,
+                statusMessage.tone === 'success' && styles.noticeCardSuccess,
+                statusMessage.tone === 'info' && styles.noticeCardInfo,
+              ]}
+              onPress={clearStatusMessage}
+            >
+              <Text
+                style={[
+                  styles.noticeText,
+                  statusMessage.tone === 'error' && styles.noticeTextError,
+                  statusMessage.tone === 'success' && styles.noticeTextSuccess,
+                  statusMessage.tone === 'info' && styles.noticeTextInfo,
+                ]}
+              >
+                {statusMessage.text}
+              </Text>
             </Pressable>
+          ) : null}
+
+          {isDeleteConfirmVisible ? (
+            <View style={styles.deleteConfirmCard}>
+              <Text style={styles.deleteConfirmTitle}>Delete this secret?</Text>
+              <Text style={styles.deleteConfirmText}>
+                It will be removed from the vault, and undo will stay available
+                for a few seconds after deletion.
+              </Text>
+              <View style={styles.deleteConfirmActions}>
+                <Pressable
+                  style={styles.deleteCancelButton}
+                  onPress={() => setIsDeleteConfirmVisible(false)}
+                  disabled={isBusy}
+                >
+                  <Text style={styles.deleteCancelText}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.deleteConfirmButton}
+                  onPress={handleDeleteConfirm}
+                  disabled={isBusy}
+                >
+                  <Text style={styles.deleteConfirmButtonText}>Delete</Text>
+                </Pressable>
+              </View>
+            </View>
           ) : null}
 
           <View style={styles.secondaryActions}>
             <Pressable
               style={styles.secondaryActionButton}
               onPress={handleEdit}
-              disabled={isBusy}
+              disabled={isBusy || isDeleteConfirmVisible}
             >
               <Text style={styles.secondaryActionText}>Edit</Text>
             </Pressable>
@@ -177,7 +213,7 @@ const SecretDetailScreen: React.FC<Props> = ({ navigation, route }) => {
             <Pressable
               style={styles.secondaryActionButton}
               onPress={handlePinnedToggle}
-              disabled={isBusy}
+              disabled={isBusy || isDeleteConfirmVisible}
             >
               <Text style={styles.secondaryActionText}>
                 {entry.pinned ? 'Unpin' : 'Pin'}
@@ -187,7 +223,7 @@ const SecretDetailScreen: React.FC<Props> = ({ navigation, route }) => {
             <Pressable
               style={styles.destructiveButton}
               onPress={handleDelete}
-              disabled={isBusy}
+              disabled={isBusy || isDeleteConfirmVisible}
             >
               <Text style={styles.destructiveText}>Delete</Text>
             </Pressable>
@@ -296,16 +332,34 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 18,
   },
-  infoCard: {
+  noticeCard: {
     backgroundColor: '#f7ead2',
     borderRadius: 18,
     padding: 14,
     marginBottom: 12,
   },
-  infoText: {
+  noticeCardError: {
+    backgroundColor: '#f7ead2',
+  },
+  noticeCardSuccess: {
+    backgroundColor: '#ddf5d7',
+  },
+  noticeCardInfo: {
+    backgroundColor: '#d9e8fb',
+  },
+  noticeText: {
     color: '#724200',
     fontSize: 13,
     lineHeight: 18,
+  },
+  noticeTextError: {
+    color: '#724200',
+  },
+  noticeTextSuccess: {
+    color: '#23581e',
+  },
+  noticeTextInfo: {
+    color: '#1f4b78',
   },
   primaryActions: {
     flexDirection: 'row',
@@ -341,6 +395,54 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
+  },
+  deleteConfirmCard: {
+    backgroundColor: '#251724',
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#4a2738',
+    marginBottom: 12,
+  },
+  deleteConfirmTitle: {
+    color: '#ffe7ec',
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+  deleteConfirmText: {
+    color: '#f4bcc8',
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 14,
+  },
+  deleteConfirmActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  deleteCancelButton: {
+    backgroundColor: '#19263b',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#243754',
+  },
+  deleteCancelText: {
+    color: '#dde7f6',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  deleteConfirmButton: {
+    backgroundColor: '#ffb3c1',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  deleteConfirmButtonText: {
+    color: '#3d1020',
+    fontWeight: '800',
+    fontSize: 14,
   },
   secondaryActionButton: {
     backgroundColor: '#19263b',

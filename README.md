@@ -98,9 +98,11 @@ From the project root:
 ```bash
 cd /Users/mohdhaseeb/todo-mobile
 source ~/.nvm/nvm.sh
-nvm use 20.20.0
+nvm use
 npm install
 ```
+
+This repo includes an `.nvmrc` pinned to `20.20.0`, so `nvm use` should select the expected Node version automatically.
 
 Verify TypeScript:
 
@@ -137,7 +139,7 @@ If your Apple Developer membership becomes active later, the intended flow is:
 
 ```bash
 source ~/.nvm/nvm.sh
-nvm use 20.20.0
+nvm use
 npx eas-cli login
 npx eas-cli project:init
 npx eas-cli build -p ios --profile preview
@@ -218,6 +220,26 @@ When testing in a real build later:
 
 - confirm auth-on-reveal behavior
 - confirm screenshot blocking
+- confirm secrets still load after fully closing and reopening the app
+- confirm secrets still load after restarting the Android device
+- confirm clipboard auto-clear timing on an installed build
+- confirm lock timeout after backgrounding and returning to the app
+
+## Android installed-build validation
+
+For Android, validate the production-style behavior in an installed build from EAS or the Play Console tester track, not only in Expo Go.
+
+Suggested pass:
+
+1. Install the Android build.
+2. Create a few secrets with different labels, tags, and collections.
+3. Fully close the app and reopen it.
+4. Restart the Android device and reopen the app.
+5. Confirm the vault metadata and secret values still load correctly.
+6. Turn on `Require auth on every reveal` and test reveal, copy, edit, pin, and delete flows.
+7. Turn on screenshot blocking and confirm screenshots or recordings are blocked on the device/build combination you care about.
+8. Copy a secret and confirm the clipboard is cleared at the selected timeout.
+9. Background the app and confirm the configured lock timeout works as expected.
 - confirm background lock timeout behavior
 - confirm clipboard timeout outside Expo Go
 

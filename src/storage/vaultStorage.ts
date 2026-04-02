@@ -34,7 +34,9 @@ function isSecretSummary(value: unknown): value is SecretSummary {
 function normalizeSecretSummary(entry: SecretSummary): SecretSummary {
   return {
     ...entry,
-    tags: Array.isArray(entry.tags) ? entry.tags : [],
+    tags: Array.isArray(entry.tags)
+      ? [...entry.tags].sort((left, right) => left.localeCompare(right))
+      : [],
     collection:
       typeof entry.collection === 'string' ? entry.collection : undefined,
     pinned: typeof entry.pinned === 'boolean' ? entry.pinned : false,

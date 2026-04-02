@@ -21,17 +21,29 @@ import {
   loadSecretSummaries,
   saveSecretEntry,
 } from '../storage/vaultStorage';
-import { SecretDraft, SecretSummary, VaultSettings } from '../types';
+import {
+  SecretDraft,
+  SecretSummary,
+  StatusMessage,
+  VaultSettings,
+} from '../types';
+import {
+  createSecretEntry,
+  getClipboardTimeoutLabel,
+  getClipboardTimeoutMs,
+  normalizeLabelForComparison,
+  toSecretSummary,
+} from './vaultHelpers';
 
 type VaultContextValue = {
   entries: SecretSummary[];
   isLoading: boolean;
   sessionLocked: boolean;
   lockVersion: number;
-  deviceSecurityWarning: string | null;
+  statusMessage: StatusMessage | null;
   supportsRuntimeDeviceAuth: boolean;
   settings: VaultSettings;
-  clearWarning: () => void;
+  clearStatusMessage: () => void;
   updateSettings: (patch: Partial<VaultSettings>) => Promise<void>;
   unlockVault: () => Promise<void>;
   saveDraft: (draft: SecretDraft) => Promise<boolean>;
@@ -56,34 +68,6 @@ const initialDraft: SecretDraft = {
   collection: '',
 };
 
-function normalizeTags(rawTags: string): string[] {
-  return Array.from(
-    new Set(
-      rawTags
-        .split(',')
-        .map((tag) => tag.trim().toLowerCase())
-        .filter(Boolean),
-    ),
-  );
-}
-
-function createSecretEntry(draft: SecretDraft, pinned = false) {
-  const now = new Date().toISOString();
-  const randomSuffix = Math.random().toString(36).slice(2, 10);
-
-  return {
-    id: draft.id ?? `secret_${Date.now()}_${randomSuffix}`,
-    label: draft.label.trim(),
-    secret: draft.secret.trim(),
-    notes: draft.notes.trim() || undefined,
-    tags: normalizeTags(draft.tags),
-    collection: draft.collection.trim() || undefined,
-    pinned,
-    createdAt: draft.createdAt ?? now,
-    updatedAt: now,
-  };
-}
-
 export const emptySecretDraft = initialDraft;
 
 export const VaultProvider: React.FC<React.PropsWithChildren> = ({
@@ -99,9 +83,7 @@ export const VaultProvider: React.FC<React.PropsWithChildren> = ({
   const [settings, setSettings] = useState<VaultSettings>(defaultVaultSettings);
   const [supportsRuntimeDeviceAuth, setSupportsRuntimeDeviceAuth] =
     useState(false);
-  const [deviceSecurityWarning, setDeviceSecurityWarning] = useState<
-    string | null
-  >(null);
+  const [statusMessage, setStatusMessage] = useState<StatusMessage | null>(null);
   const clipboardTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clipboardOwnedValueRef = useRef<string | null>(null);
   const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -216,35 +198,12 @@ export const VaultProvider: React.FC<React.PropsWithChildren> = ({
     clipboardOwnedValueRef.current = null;
   };
 
-  const getClipboardTimeoutMs = () => {
-    switch (settings.clipboardTimeout) {
-      case '15s':
-        return 15_000;
-      case '90s':
-        return 90_000;
-      case '45s':
-      default:
-        return 45_000;
-    }
-  };
-
-  const getClipboardTimeoutLabel = () => {
-    switch (settings.clipboardTimeout) {
-      case '15s':
-        return '15 seconds';
-      case '90s':
-        return '90 seconds';
-      case '45s':
-      default:
-        return '45 seconds';
-    }
-  };
-
   const authenticateForAccess = async (promptMessage: string) => {
     if (!supportsRuntimeDeviceAuth) {
-      setDeviceSecurityWarning(
-        'Device authentication is not available on this device. Set up a screen lock or biometrics to use this protection.',
-      );
+      setStatusMessage({
+        tone: 'error',
+        text: 'Device authentication is not available on this device. Set up a screen lock or biometrics to use this protection.',
+      });
       return false;
     }
 
@@ -256,7 +215,7 @@ export const VaultProvider: React.FC<React.PropsWithChildren> = ({
       });
 
       if (result.success) {
-        setDeviceSecurityWarning(null);
+        setStatusMessage(null);
         return true;
       }
 
@@ -268,15 +227,17 @@ export const VaultProvider: React.FC<React.PropsWithChildren> = ({
         return false;
       }
 
-      setDeviceSecurityWarning(
-        'Authentication failed. Check your screen lock or biometric setup and try again.',
-      );
+      setStatusMessage({
+        tone: 'error',
+        text: 'Authentication failed. Check your screen lock or biometric setup and try again.',
+      });
       return false;
     } catch (error) {
       console.warn('Failed to run local authentication', error);
-      setDeviceSecurityWarning(
-        'Authentication failed. Check your screen lock or biometric setup and try again.',
-      );
+      setStatusMessage({
+        tone: 'error',
+        text: 'Authentication failed. Check your screen lock or biometric setup and try again.',
+      });
       return false;
     }
   };
@@ -289,7 +250,7 @@ export const VaultProvider: React.FC<React.PropsWithChildren> = ({
     clipboardOwnedValueRef.current = secretValue;
     clipboardTimeoutRef.current = setTimeout(() => {
       void clearClipboardIfOwned();
-    }, getClipboardTimeoutMs());
+    }, getClipboardTimeoutMs(settings.clipboardTimeout));
   };
 
   const revealSecret = async (id: string) => {
@@ -305,13 +266,14 @@ export const VaultProvider: React.FC<React.PropsWithChildren> = ({
     const value = await loadProtectedSecretValue(id);
 
     if (!value) {
-      setDeviceSecurityWarning(
-        'This secret could not be loaded from secure storage.',
-      );
+      setStatusMessage({
+        tone: 'error',
+        text: 'This secret could not be loaded from secure storage.',
+      });
       return null;
     }
 
-    setDeviceSecurityWarning(null);
+    setStatusMessage(null);
     return value;
   };
 
@@ -329,22 +291,42 @@ export const VaultProvider: React.FC<React.PropsWithChildren> = ({
     }
 
     if (!didWrite) {
-      setDeviceSecurityWarning(
-        'Copy failed. The phone clipboard did not accept the secret value.',
-      );
+      setStatusMessage({
+        tone: 'error',
+        text: 'Copy failed. The phone clipboard did not accept the secret value.',
+      });
       return false;
     }
 
     scheduleClipboardClear(value);
-    setDeviceSecurityWarning(
-      `Secret copied. The clipboard will be cleared in ${getClipboardTimeoutLabel()} if it still contains the same value.`,
-    );
+    setStatusMessage({
+      tone: 'success',
+      text: `Secret copied. The clipboard will be cleared in ${getClipboardTimeoutLabel(settings.clipboardTimeout)} if it still contains the same value.`,
+    });
     return true;
   };
 
   const saveDraft = async (draft: SecretDraft) => {
     if (!draft.label.trim() || !draft.secret.trim()) {
-      setDeviceSecurityWarning('Label and secret value are required.');
+      setStatusMessage({
+        tone: 'error',
+        text: 'Label and secret value are required.',
+      });
+      return false;
+    }
+
+    const normalizedDraftLabel = normalizeLabelForComparison(draft.label);
+    const hasDuplicateLabel = entries.some(
+      (entry) =>
+        entry.id !== draft.id &&
+        normalizeLabelForComparison(entry.label) === normalizedDraftLabel,
+    );
+
+    if (hasDuplicateLabel) {
+      setStatusMessage({
+        tone: 'error',
+        text: 'A secret with this name already exists.',
+      });
       return false;
     }
 
@@ -355,25 +337,17 @@ export const VaultProvider: React.FC<React.PropsWithChildren> = ({
       const nextEntry = createSecretEntry(draft, existingEntry?.pinned ?? false);
       await saveSecretEntry(nextEntry);
       setEntries((current) => [
-        {
-          id: nextEntry.id,
-          label: nextEntry.label,
-          notes: nextEntry.notes,
-          tags: nextEntry.tags,
-          collection: nextEntry.collection,
-          pinned: nextEntry.pinned,
-          createdAt: nextEntry.createdAt,
-          updatedAt: nextEntry.updatedAt,
-        },
+        toSecretSummary(nextEntry),
         ...current.filter((entry) => entry.id !== nextEntry.id),
       ]);
-      setDeviceSecurityWarning(null);
+      setStatusMessage(null);
       return true;
     } catch (error) {
       console.warn('Failed to save protected secret', error);
-      setDeviceSecurityWarning(
-        'Saving failed. Make sure device security is enabled and try again.',
-      );
+      setStatusMessage({
+        tone: 'error',
+        text: 'Saving failed. Make sure device security is enabled and try again.',
+      });
       return false;
     }
   };
@@ -402,11 +376,17 @@ export const VaultProvider: React.FC<React.PropsWithChildren> = ({
       undoTimeoutRef.current = setTimeout(() => {
         setPendingUndoEntry(null);
       }, 8_000);
-      setDeviceSecurityWarning('Secret deleted. Undo is available for 8 seconds.');
+      setStatusMessage({
+        tone: 'success',
+        text: 'Secret deleted. Undo is available for 8 seconds.',
+      });
       return true;
     } catch (error) {
       console.warn('Failed to delete protected secret', error);
-      setDeviceSecurityWarning('Delete failed. Please try again.');
+      setStatusMessage({
+        tone: 'error',
+        text: 'Delete failed. Please try again.',
+      });
       return false;
     }
   };
@@ -419,26 +399,23 @@ export const VaultProvider: React.FC<React.PropsWithChildren> = ({
     try {
       await saveSecretEntry(pendingUndoEntry);
       setEntries((current) => [
-        {
-          id: pendingUndoEntry.id,
-          label: pendingUndoEntry.label,
-          notes: pendingUndoEntry.notes,
-          tags: pendingUndoEntry.tags,
-          collection: pendingUndoEntry.collection,
-          pinned: pendingUndoEntry.pinned,
-          createdAt: pendingUndoEntry.createdAt,
-          updatedAt: pendingUndoEntry.updatedAt,
-        },
+        toSecretSummary(pendingUndoEntry),
         ...current.filter((entry) => entry.id !== pendingUndoEntry.id),
       ]);
       setPendingUndoEntry(null);
       if (undoTimeoutRef.current) {
         clearTimeout(undoTimeoutRef.current);
       }
-      setDeviceSecurityWarning('Deletion undone.');
+      setStatusMessage({
+        tone: 'success',
+        text: 'Deletion undone.',
+      });
     } catch (error) {
       console.warn('Failed to undo deletion', error);
-      setDeviceSecurityWarning('Undo failed. Please try again.');
+      setStatusMessage({
+        tone: 'error',
+        text: 'Undo failed. Please try again.',
+      });
     }
   };
 
@@ -448,9 +425,10 @@ export const VaultProvider: React.FC<React.PropsWithChildren> = ({
       return null;
     }
 
-    setDeviceSecurityWarning(
-      'Editing an existing secret. Save will update it in place.',
-    );
+    setStatusMessage({
+      tone: 'info',
+      text: 'Editing an existing secret. Save will update it in place.',
+    });
     return {
       id: entry.id,
       createdAt: entry.createdAt,
@@ -489,11 +467,14 @@ export const VaultProvider: React.FC<React.PropsWithChildren> = ({
         },
         ...current.filter((item) => item.id !== entry.id),
       ]);
-      setDeviceSecurityWarning(null);
+      setStatusMessage(null);
       return true;
     } catch (error) {
       console.warn('Failed to update pinned state', error);
-      setDeviceSecurityWarning('Pin update failed. Please try again.');
+      setStatusMessage({
+        tone: 'error',
+        text: 'Pin update failed. Please try again.',
+      });
       return false;
     }
   };
@@ -501,9 +482,10 @@ export const VaultProvider: React.FC<React.PropsWithChildren> = ({
   const unlockVault = async () => {
     if (!supportsRuntimeDeviceAuth) {
       setSessionLocked(false);
-      setDeviceSecurityWarning(
-        'Device authentication is not available on this device, so the vault lock is acting only as a privacy screen.',
-      );
+      setStatusMessage({
+        tone: 'info',
+        text: 'Device authentication is not available on this device, so the vault lock is acting only as a privacy screen.',
+      });
       return;
     }
 
@@ -512,7 +494,7 @@ export const VaultProvider: React.FC<React.PropsWithChildren> = ({
       return;
     }
 
-    setDeviceSecurityWarning(null);
+    setStatusMessage(null);
     setSessionLocked(false);
   };
 
@@ -531,10 +513,10 @@ export const VaultProvider: React.FC<React.PropsWithChildren> = ({
       isLoading,
       sessionLocked,
       lockVersion,
-      deviceSecurityWarning,
+      statusMessage,
       supportsRuntimeDeviceAuth,
       settings,
-      clearWarning: () => setDeviceSecurityWarning(null),
+      clearStatusMessage: () => setStatusMessage(null),
       updateSettings,
       unlockVault,
       saveDraft,
@@ -551,7 +533,7 @@ export const VaultProvider: React.FC<React.PropsWithChildren> = ({
       isLoading,
       sessionLocked,
       lockVersion,
-      deviceSecurityWarning,
+      statusMessage,
       supportsRuntimeDeviceAuth,
       settings,
       pendingUndoEntry,
