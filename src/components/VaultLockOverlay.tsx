@@ -1,4 +1,5 @@
 import React from 'react';
+import GlassSurface from './GlassSurface';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useVault } from '../vault/VaultProvider';
 
@@ -12,7 +13,7 @@ const VaultLockOverlay: React.FC = () => {
 
   return (
     <View style={styles.lockOverlay}>
-      <View style={styles.lockCard}>
+      <GlassSurface style={styles.lockCard}>
         <Text style={styles.lockTitle}>
           {isLoading ? 'Preparing vault' : 'Vault locked'}
         </Text>
@@ -28,7 +29,7 @@ const VaultLockOverlay: React.FC = () => {
             <Text style={styles.unlockButtonText}>Unlock vault</Text>
           </Pressable>
         ) : null}
-      </View>
+      </GlassSurface>
     </View>
   );
 };
@@ -37,7 +38,7 @@ export default VaultLockOverlay;
 
 const styles = StyleSheet.create({
   lockOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(4, 10, 19, 0.72)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -46,11 +47,8 @@ const styles = StyleSheet.create({
   lockCard: {
     width: '100%',
     maxWidth: 360,
-    backgroundColor: '#101826',
     borderRadius: 28,
     padding: 22,
-    borderWidth: 1,
-    borderColor: '#22324d',
   },
   lockTitle: {
     color: '#f7fbff',

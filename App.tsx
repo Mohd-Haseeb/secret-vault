@@ -1,8 +1,9 @@
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import GlassBackdrop from './src/components/GlassBackdrop';
 import VaultLockOverlay from './src/components/VaultLockOverlay';
 import UndoBanner from './src/components/UndoBanner';
 import SecretDetailScreen from './src/screens/SecretDetailScreen';
@@ -26,18 +27,19 @@ export default function App() {
     <SafeAreaProvider>
       <VaultProvider>
         <NavigationContainer>
-          <StatusBar
-            style="light"
-            backgroundColor="#0d1b2f"
-            translucent={false}
-          />
+          <StatusBar style="light" />
           <View style={styles.container}>
+            <GlassBackdrop />
             <Stack.Navigator
               screenOptions={{
-                headerStyle: { backgroundColor: '#0d1b2f' },
+                // On iOS the system draws the Liquid Glass navigation bar;
+                // a custom header background would switch it off.
+                ...(Platform.OS === 'ios'
+                  ? { headerTransparent: false }
+                  : { headerStyle: { backgroundColor: '#0d1b2f' } }),
                 headerTintColor: '#f7fbff',
                 headerShadowVisible: false,
-                contentStyle: { backgroundColor: '#06111f' },
+                contentStyle: { backgroundColor: 'transparent' },
               }}
             >
               <Stack.Screen

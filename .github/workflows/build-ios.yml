@@ -1,0 +1,309 @@
+name: Build iOS IPA
+
+on:
+  workflow_dispatch:
+    inputs:
+      export_method:
+        description: "IPA Export Method (ad-hoc, development, app-store, enterprise)"
+        required: true
+        default: "ad-hoc"
+        type: choice
+        options:
+          - "ad-hoc"
+          - "development"
+          - "app-store"
+          - "enterprise"
+      configuration:
+        description: "Xcode Configuration (Release or Debug)"
+        required: true
+        default: "Release"
+        type: choice
+        options:
+          - "Release"
+          - "Debug"
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-ios-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: "1"
+  EXPO_NO_TELEMETRY: "1"
+  BUNDLE_ID: com.gravityinfinite.secretvault
+
+jobs:
+  build-ipa:
+    name: Build iOS IPA (.ipa)
+    runs-on: macos-26
+    timeout-minutes: 60
+
+    steps:
+      - name: 🏗 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🛠 Select Xcode Version (Xcode 26.x)
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "^26.0"
+
+      - name: 🔍 Verify Xcode & Swift Toolchain
+        run: |
+          echo "Active Developer Directory: $(xcode-select -p)"
+          xcodebuild -version
+          swift -version
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: "npm"
+
+      - name: 📦 Install npm dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: 📱 Prebuild iOS Native Project
+        run: npx expo prebuild --platform ios --no-install
+
+      - name: 🍎 Install CocoaPods dependencies
+        working-directory: ios
+        run: pod install
+
+      - name: 🔍 Detect Workspace and Scheme
+        id: detect
+        run: |
+          WORKSPACE=$(find ios -maxdepth 1 -name "*.xcworkspace" | head -n 1)
+          if [ -z "$WORKSPACE" ]; then
+            echo "❌ No .xcworkspace found in ios directory"
+            ls -la ios
+            exit 1
+          fi
+          echo "Found workspace: $WORKSPACE"
+          echo "workspace=$WORKSPACE" >> "$GITHUB_OUTPUT"
+
+          APP_PROJECT=$(find ios -maxdepth 1 -name "*.xcodeproj" ! -name "Pods.xcodeproj" | head -n 1)
+          if [ -n "$APP_PROJECT" ]; then
+            SCHEME=$(xcodebuild -list -project "$APP_PROJECT" -json 2>/dev/null | jq -r '.project.schemes[0]' 2>/dev/null || echo "")
+            if [ -z "$SCHEME" ] || [ "$SCHEME" = "null" ]; then
+              SCHEME=$(basename "$APP_PROJECT" .xcodeproj)
+            fi
+          else
+            SCHEME=$(basename "$WORKSPACE" .xcworkspace)
+          fi
+          echo "Found scheme: $SCHEME"
+          echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
+
+      - name: 🔐 Setup Provisioning Profile & Certificate (if secrets provided)
+        id: sign-setup
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD || 'temporary-ci-password' }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -n "$BUILD_CERTIFICATE_BASE64" ] && [ -n "$BUILD_PROVISION_PROFILE_BASE64" ]; then
+            echo "has_signing=true" >> "$GITHUB_OUTPUT"
+            echo "==> Configuring Apple signing certificate & provisioning profile..."
+
+            CERT_PATH="$RUNNER_TEMP/build_cert.p12"
+            PP_PATH="$RUNNER_TEMP/build_pp.mobileprovision"
+            KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+
+            echo "$BUILD_CERTIFICATE_BASE64" | base64 --decode > "$CERT_PATH"
+            echo "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode > "$PP_PATH"
+
+            security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+            security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+            security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+            security import "$CERT_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+            security list-keychain -d user -s "$KEYCHAIN_PATH"
+            security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+            mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+            PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" /dev/stdin <<< $(security cms -D -i "$PP_PATH"))
+            cp "$PP_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/"${PROFILE_UUID}.mobileprovision"
+            echo "profile_uuid=$PROFILE_UUID" >> "$GITHUB_OUTPUT"
+
+            PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print Name" /dev/stdin <<< $(security cms -D -i "$PP_PATH"))
+            echo "profile_name=$PROFILE_NAME" >> "$GITHUB_OUTPUT"
+
+            if [ -z "$APPLE_TEAM_ID" ]; then
+              TEAM_ID=$(/usr/libexec/PlistBuddy -c "Print TeamIdentifier:0" /dev/stdin <<< $(security cms -D -i "$PP_PATH"))
+              echo "team_id=$TEAM_ID" >> "$GITHUB_OUTPUT"
+            else
+              echo "team_id=$APPLE_TEAM_ID" >> "$GITHUB_OUTPUT"
+            fi
+
+            echo "Provisioning Profile installed: $PROFILE_NAME ($PROFILE_UUID)"
+          else
+            echo "has_signing=false" >> "$GITHUB_OUTPUT"
+            echo "⚠️ No code signing secrets provided. Building unsigned IPA for sideloading/testing."
+          fi
+
+      - name: ⚙️ Generate ExportOptions.plist
+        if: steps.sign-setup.outputs.has_signing == 'true'
+        run: |
+          EXPORT_METHOD="${{ github.event.inputs.export_method || 'ad-hoc' }}"
+          TEAM_ID="${{ steps.sign-setup.outputs.team_id }}"
+          PROFILE_NAME="${{ steps.sign-setup.outputs.profile_name }}"
+
+          mkdir -p ios/build
+          cat <<EOF > ios/build/ExportOptions.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>${EXPORT_METHOD}</string>
+              <key>teamID</key>
+              <string>${TEAM_ID}</string>
+              <key>signingStyle</key>
+              <string>manual</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>${BUNDLE_ID}</key>
+                  <string>${PROFILE_NAME}</string>
+              </dict>
+              <key>destination</key>
+              <string>export</string>
+          </dict>
+          </plist>
+          EOF
+
+          echo "ExportOptions.plist generated:"
+          cat ios/build/ExportOptions.plist
+
+      - name: 🔨 Build Xcode Archive (Signed)
+        if: steps.sign-setup.outputs.has_signing == 'true'
+        run: |
+          CONFIG="${{ github.event.inputs.configuration || 'Release' }}"
+          WORKSPACE="${{ steps.detect.outputs.workspace }}"
+          SCHEME="${{ steps.detect.outputs.scheme }}"
+          mkdir -p ios/build
+
+          echo "Archiving iOS app with signing: $WORKSPACE (scheme: $SCHEME)..."
+          set -o pipefail
+          xcodebuild archive \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -configuration "$CONFIG" \
+            -destination 'generic/platform=iOS' \
+            -archivePath ios/build/SecretVault.xcarchive \
+            DEVELOPMENT_TEAM="${{ steps.sign-setup.outputs.team_id }}" \
+            CODE_SIGN_STYLE="Manual" \
+            PROVISIONING_PROFILE_SPECIFIER="${{ steps.sign-setup.outputs.profile_name }}" \
+            CODE_SIGN_IDENTITY="${{ github.event.inputs.export_method == 'development' && 'Apple Development' || 'Apple Distribution' }}" \
+            ENABLE_USER_SCRIPT_SANDBOXING=NO \
+            2>&1 | tee ios/build/xcodebuild.log
+
+      - name: 📦 Export Signed IPA
+        if: steps.sign-setup.outputs.has_signing == 'true'
+        run: |
+          set -o pipefail
+          xcodebuild -exportArchive \
+            -archivePath ios/build/SecretVault.xcarchive \
+            -exportPath ios/build \
+            -exportOptionsPlist ios/build/ExportOptions.plist \
+            2>&1 | tee -a ios/build/xcodebuild.log
+
+      - name: 🔨 Build Xcode App & Unsigned IPA (Fallback)
+        if: steps.sign-setup.outputs.has_signing != 'true'
+        run: |
+          CONFIG="${{ github.event.inputs.configuration || 'Release' }}"
+          WORKSPACE="${{ steps.detect.outputs.workspace }}"
+          SCHEME="${{ steps.detect.outputs.scheme }}"
+          mkdir -p ios/build
+
+          echo "Building iOS app without signing: $WORKSPACE (scheme: $SCHEME)..."
+          set -o pipefail
+          xcodebuild build \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -configuration "$CONFIG" \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath ios/build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            ENABLE_USER_SCRIPT_SANDBOXING=NO \
+            2>&1 | tee ios/build/xcodebuild.log
+
+          mkdir -p ios/build/Payload
+          APP_PATH=$(find ios/build/DerivedData/Build/Products/${CONFIG}-iphoneos -maxdepth 1 -name "*.app" 2>/dev/null | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            APP_PATH=$(find ios/build/DerivedData/Build/Products -name "*.app" ! -name "*Tests*" 2>/dev/null | head -n 1)
+          fi
+          if [ -z "$APP_PATH" ]; then
+            echo "❌ No .app found in DerivedData Products"
+            find ios/build/DerivedData -maxdepth 4 -name "*.app" || true
+            exit 1
+          fi
+          echo "Packaging $APP_PATH into unsigned IPA..."
+          cp -R "$APP_PATH" ios/build/Payload/
+          cd ios/build
+          zip -qry SecretVault-unsigned.ipa Payload
+          echo "Created unsigned IPA: ios/build/SecretVault-unsigned.ipa"
+
+      - name: 🚨 Extract and Display Build Errors (on failure)
+        if: failure()
+        run: |
+          echo "### ❌ Build Failure Diagnostics" >> $GITHUB_STEP_SUMMARY
+          if [ -f "ios/build/xcodebuild.log" ]; then
+            echo "#### Critical Xcode Errors:" >> $GITHUB_STEP_SUMMARY
+            echo '```text' >> $GITHUB_STEP_SUMMARY
+            grep -E ': error:|^error:' ios/build/xcodebuild.log | sort -u | head -n 40 >> $GITHUB_STEP_SUMMARY || echo "No explicit 'error:' patterns matched in log." >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "#### Last 30 lines of build log:" >> $GITHUB_STEP_SUMMARY
+            echo '```text' >> $GITHUB_STEP_SUMMARY
+            tail -n 30 ios/build/xcodebuild.log >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No xcodebuild.log was generated." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: 📤 Upload Build Logs (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SecretVault-iOS-Build-Log-${{ github.run_number }}
+          path: ios/build/*.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: 🧹 Clean up Temporary Keychain
+        if: always() && steps.sign-setup.outputs.has_signing == 'true'
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          if [ -f "$KEYCHAIN_PATH" ]; then
+            security delete-keychain "$KEYCHAIN_PATH"
+          fi
+
+      - name: 📤 Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SecretVault-iOS-IPA-build-${{ github.run_number }}
+          path: ios/build/*.ipa
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: 📋 Build Summary
+        if: always()
+        run: |
+          echo "### 📱 Secret Vault iOS Build Summary" >> $GITHUB_STEP_SUMMARY
+          if ls ios/build/*.ipa 1> /dev/null 2>&1; then
+            echo "✅ **IPA Generated Successfully!**" >> $GITHUB_STEP_SUMMARY
+            echo "- **Signing Mode**: ${{ steps.sign-setup.outputs.has_signing == 'true' && '🔐 Signed' || '⚠️ Unsigned (Ready for Sideloading)' }}" >> $GITHUB_STEP_SUMMARY
+            for ipa in ios/build/*.ipa; do
+              size=$(ls -lh "$ipa" | awk '{print $5}')
+              echo "  - \`$(basename "$ipa")\` ($size)" >> $GITHUB_STEP_SUMMARY
+            done
+          else
+            echo "❌ **IPA Build Failed.** Inspect the diagnostics above or download the build log artifact." >> $GITHUB_STEP_SUMMARY
+          fi
