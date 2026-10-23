@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { RootStackParamList } from '../../App';
+import GlassSurface from '../components/GlassSurface';
 import { useVault } from '../vault/VaultProvider';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'SecretDetail'>;
@@ -97,7 +98,7 @@ const SecretDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.card}>
+        <GlassSurface style={styles.card}>
           <View style={styles.headerRow}>
             <View style={styles.headerCopy}>
               <Text style={styles.title}>{entry.label}</Text>
@@ -228,7 +229,7 @@ const SecretDetailScreen: React.FC<Props> = ({ navigation, route }) => {
               <Text style={styles.destructiveText}>Delete</Text>
             </Pressable>
           </View>
-        </View>
+        </GlassSurface>
       </ScrollView>
     </View>
   );
@@ -239,18 +240,14 @@ export default SecretDetailScreen;
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#06111f',
   },
   scrollContent: {
     padding: 18,
     paddingBottom: 40,
   },
   card: {
-    backgroundColor: '#101826',
     borderRadius: 28,
     padding: 20,
-    borderWidth: 1,
-    borderColor: '#22324d',
   },
   headerRow: {
     flexDirection: 'row',

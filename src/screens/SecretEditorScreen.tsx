@@ -178,7 +178,6 @@ export default SecretEditorScreen;
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#06111f',
   },
   scrollContent: {
     padding: 18,

@@ -13,6 +13,7 @@ import {
   ClipboardTimeoutOption,
   LockTimeoutOption,
 } from '../types';
+import GlassSurface from '../components/GlassSurface';
 import { useVault } from '../vault/VaultProvider';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
@@ -36,7 +37,7 @@ const SettingsScreen: React.FC<Props> = () => {
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.section}>
+        <GlassSurface style={styles.section}>
           <Text style={styles.sectionTitle}>Security</Text>
 
           <View style={styles.row}>
@@ -71,9 +72,9 @@ const SettingsScreen: React.FC<Props> = () => {
               }
             />
           </View>
-        </View>
+        </GlassSurface>
 
-        <View style={styles.section}>
+        <GlassSurface style={styles.section}>
           <Text style={styles.sectionTitle}>Lock timeout</Text>
           <View style={styles.chipRow}>
             {lockOptions.map((option) => (
@@ -99,9 +100,9 @@ const SettingsScreen: React.FC<Props> = () => {
               </Pressable>
             ))}
           </View>
-        </View>
+        </GlassSurface>
 
-        <View style={styles.section}>
+        <GlassSurface style={styles.section}>
           <Text style={styles.sectionTitle}>Clipboard clear timeout</Text>
           <View style={styles.chipRow}>
             {clipboardOptions.map((option) => (
@@ -128,9 +129,9 @@ const SettingsScreen: React.FC<Props> = () => {
               </Pressable>
             ))}
           </View>
-        </View>
+        </GlassSurface>
 
-        <View style={styles.section}>
+        <GlassSurface style={styles.section}>
           <Text style={styles.sectionTitle}>About your data</Text>
           <Text style={styles.aboutText}>
             Secrets stay local to this device. There is no account, sync
@@ -142,7 +143,7 @@ const SettingsScreen: React.FC<Props> = () => {
             Export and import are intentionally not enabled right now because
             they create a second high-value artifact outside the vault.
           </Text>
-        </View>
+        </GlassSurface>
       </ScrollView>
     </View>
   );
@@ -153,7 +154,6 @@ export default SettingsScreen;
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#06111f',
   },
   scrollContent: {
     padding: 18,
@@ -161,11 +161,8 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   section: {
-    backgroundColor: '#101826',
     borderRadius: 24,
     padding: 18,
-    borderWidth: 1,
-    borderColor: '#22324d',
   },
   sectionTitle: {
     color: '#f7fbff',

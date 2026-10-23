@@ -285,7 +285,6 @@ export const VaultProvider: React.FC<React.PropsWithChildren> = ({
 
     let didWrite = await Clipboard.setStringAsync(value);
     if (!didWrite) {
-      Clipboard.setString(value);
       const clipboardValue = await Clipboard.getStringAsync();
       didWrite = clipboardValue === value;
     }

@@ -1,5 +1,5 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { RootStackParamList } from '../../App';
+import GlassSurface from '../components/GlassSurface';
 import { SecretSummary, SortMode } from '../types';
 import { useVault } from '../vault/VaultProvider';
 
@@ -20,22 +21,45 @@ const sortModes: { value: SortMode; label: string }[] = [
   { value: 'created', label: 'Created' },
 ];
 
-function sortEntries(entries: SecretSummary[], sortMode: SortMode) {
-  const sorted = [...entries];
-  switch (sortMode) {
-    case 'alphabetical':
-      return sorted.sort((left, right) => left.label.localeCompare(right.label));
-    case 'created':
-      return sorted.sort((left, right) =>
-        right.createdAt.localeCompare(left.createdAt),
-      );
-    case 'updated':
-    default:
-      return sorted.sort((left, right) =>
-        right.updatedAt.localeCompare(left.updatedAt),
-      );
-  }
-}
+const comparators: Record<SortMode, (a: SecretSummary, b: SecretSummary) => number> = {
+  alphabetical: (a, b) => a.label.localeCompare(b.label),
+  created: (a, b) => b.createdAt.localeCompare(a.createdAt),
+  updated: (a, b) => b.updatedAt.localeCompare(a.updatedAt),
+};
+
+type EntryRowProps = {
+  entry: SecretSummary;
+  showPinBadge?: boolean;
+  onOpen: (id: string) => void;
+};
+
+const EntryRow = React.memo(function EntryRow({
+  entry,
+  showPinBadge,
+  onOpen,
+}: EntryRowProps) {
+  return (
+    <Pressable onPress={() => onOpen(entry.id)}>
+      <GlassSurface style={styles.rowCard}>
+        <View style={styles.rowHeader}>
+          <Text style={styles.rowTitle}>{entry.label}</Text>
+          {showPinBadge ? <Text style={styles.pinBadge}>Pinned</Text> : null}
+        </View>
+        {entry.collection ? (
+          <Text style={styles.rowCollection}>{entry.collection}</Text>
+        ) : null}
+        {entry.tags.length > 0 ? (
+          <Text style={styles.rowTags}>
+            {entry.tags.map((tag) => `#${tag}`).join('  ')}
+          </Text>
+        ) : null}
+        <Text style={styles.rowMeta}>
+          Updated {new Date(entry.updatedAt).toLocaleDateString()}
+        </Text>
+      </GlassSurface>
+    </Pressable>
+  );
+});
 
 const VaultListScreen: React.FC<Props> = ({ navigation }) => {
   const { entries, statusMessage, clearStatusMessage } = useVault();
@@ -80,14 +104,17 @@ const VaultListScreen: React.FC<Props> = ({ navigation }) => {
     });
   }, [activeCollection, activeTag, entries, searchQuery]);
 
-  const pinnedEntries = useMemo(
-    () => sortEntries(filteredEntries.filter((entry) => entry.pinned), sortMode),
-    [filteredEntries, sortMode],
-  );
-  const otherEntries = useMemo(
-    () =>
-      sortEntries(filteredEntries.filter((entry) => !entry.pinned), sortMode),
-    [filteredEntries, sortMode],
+  const { pinnedEntries, otherEntries } = useMemo(() => {
+    const sorted = [...filteredEntries].sort(comparators[sortMode]);
+    return {
+      pinnedEntries: sorted.filter((entry) => entry.pinned),
+      otherEntries: sorted.filter((entry) => !entry.pinned),
+    };
+  }, [filteredEntries, sortMode]);
+
+  const openEntry = useCallback(
+    (secretID: string) => navigation.navigate('SecretDetail', { secretID }),
+    [navigation],
   );
 
   return (
@@ -96,7 +123,7 @@ const VaultListScreen: React.FC<Props> = ({ navigation }) => {
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.scrollContent}
       >
-        <View style={styles.hero}>
+        <GlassSurface style={styles.hero}>
           <Text style={styles.subtitle}>
             Browse your secrets, pin the important ones, and keep the editor out
             of the way until you need it.
@@ -115,11 +142,12 @@ const VaultListScreen: React.FC<Props> = ({ navigation }) => {
               <Text style={styles.settingsButtonText}>Settings</Text>
             </Pressable>
           </View>
-        </View>
+        </GlassSurface>
 
         <View style={styles.toolbar}>
           <TextInput
             style={styles.searchInput}
+            clearButtonMode="while-editing"
             placeholder="Search labels, notes, and tags"
             placeholderTextColor="#7f90aa"
             value={searchQuery}
@@ -269,48 +297,31 @@ const VaultListScreen: React.FC<Props> = ({ navigation }) => {
         ) : null}
 
         {entries.length === 0 ? (
-          <View style={styles.emptyState}>
+          <GlassSurface style={styles.emptyState}>
             <Text style={styles.emptyTitle}>Vault is empty</Text>
             <Text style={styles.emptySubtitle}>
               Add your first secret to start building the vault.
             </Text>
-          </View>
+          </GlassSurface>
         ) : filteredEntries.length === 0 ? (
-          <View style={styles.emptyState}>
+          <GlassSurface style={styles.emptyState}>
             <Text style={styles.emptyTitle}>No matching secrets</Text>
             <Text style={styles.emptySubtitle}>
               Adjust the search text or active tag to widen the results.
             </Text>
-          </View>
+          </GlassSurface>
         ) : (
           <View style={styles.listSections}>
             {pinnedEntries.length > 0 ? (
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Pinned</Text>
                 {pinnedEntries.map((entry) => (
-                  <Pressable
+                  <EntryRow
                     key={entry.id}
-                    style={styles.rowCard}
-                    onPress={() =>
-                      navigation.navigate('SecretDetail', { secretID: entry.id })
-                    }
-                  >
-                    <View style={styles.rowHeader}>
-                      <Text style={styles.rowTitle}>{entry.label}</Text>
-                      <Text style={styles.pinBadge}>Pinned</Text>
-                    </View>
-                    {entry.collection ? (
-                      <Text style={styles.rowCollection}>{entry.collection}</Text>
-                    ) : null}
-                    {entry.tags.length > 0 ? (
-                      <Text style={styles.rowTags}>
-                        {entry.tags.map((tag) => `#${tag}`).join('  ')}
-                      </Text>
-                    ) : null}
-                    <Text style={styles.rowMeta}>
-                      Updated {new Date(entry.updatedAt).toLocaleDateString()}
-                    </Text>
-                  </Pressable>
+                    entry={entry}
+                    showPinBadge
+                    onOpen={openEntry}
+                  />
                 ))}
               </View>
             ) : null}
@@ -318,28 +329,7 @@ const VaultListScreen: React.FC<Props> = ({ navigation }) => {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>All secrets</Text>
               {otherEntries.map((entry) => (
-                <Pressable
-                  key={entry.id}
-                  style={styles.rowCard}
-                  onPress={() =>
-                    navigation.navigate('SecretDetail', { secretID: entry.id })
-                  }
-                >
-                  <View style={styles.rowHeader}>
-                    <Text style={styles.rowTitle}>{entry.label}</Text>
-                  </View>
-                  {entry.collection ? (
-                    <Text style={styles.rowCollection}>{entry.collection}</Text>
-                  ) : null}
-                  {entry.tags.length > 0 ? (
-                    <Text style={styles.rowTags}>
-                      {entry.tags.map((tag) => `#${tag}`).join('  ')}
-                    </Text>
-                  ) : null}
-                  <Text style={styles.rowMeta}>
-                    Updated {new Date(entry.updatedAt).toLocaleDateString()}
-                  </Text>
-                </Pressable>
+                <EntryRow key={entry.id} entry={entry} onOpen={openEntry} />
               ))}
             </View>
           </View>
@@ -354,14 +344,12 @@ export default VaultListScreen;
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#06111f',
   },
   scrollContent: {
     padding: 18,
     paddingBottom: 40,
   },
   hero: {
-    backgroundColor: '#0d1b2f',
     borderRadius: 28,
     padding: 22,
     marginBottom: 18,
@@ -406,7 +394,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   searchInput: {
-    backgroundColor: '#101826',
+    backgroundColor: 'rgba(16, 24, 38, 0.6)',
     borderRadius: 20,
     borderWidth: 1,
     borderColor: '#22324d',
@@ -522,11 +510,8 @@ const styles = StyleSheet.create({
     color: '#1f4b78',
   },
   emptyState: {
-    backgroundColor: '#101826',
     borderRadius: 24,
     padding: 20,
-    borderWidth: 1,
-    borderColor: '#22324d',
   },
   emptyTitle: {
     color: '#f7fbff',
@@ -551,11 +536,8 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   rowCard: {
-    backgroundColor: '#101826',
     borderRadius: 22,
     padding: 16,
-    borderWidth: 1,
-    borderColor: '#22324d',
   },
   rowHeader: {
     flexDirection: 'row',
